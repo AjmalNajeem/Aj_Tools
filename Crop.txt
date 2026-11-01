@@ -1,0 +1,68 @@
+
+import nuke
+
+def crop_from_sample_area():
+    viewer = nuke.activeViewer()
+    if not viewer:
+        nuke.message("No active viewer found.")
+        return
+        
+    viewer_node = viewer.node()
+    active_input = viewer.activeInput()
+    
+    # 1. Get the viewed image dimensions (width and height) to calculate pixel scale
+    if active_input is not None and viewer_node.input(active_input):
+        viewed_node = viewer_node.input(active_input)
+        w = float(viewed_node.width())
+        h = float(viewed_node.height())
+    else:
+        # Fallback to project root format if viewing a blank viewer
+        fmt = nuke.root().format()
+        w = float(fmt.width())
+        h = float(fmt.height())
+        
+    # 2. Extract the raw Normalized Device Coordinates (NDC) of the drawn box
+    if 'colour_sample_bbox' not in viewer_node.knobs():
+        return
+        
+    bbox_ndc = viewer_node['colour_sample_bbox'].value()
+    x_ndc, y_ndc, r_ndc, t_ndc = bbox_ndc
+    
+    # Check if a box is actually drawn (prevents a zero-area click from breaking the tool)
+    if abs(r_ndc - x_ndc) < 0.0001 or abs(t_ndc - y_ndc) < 0.0001:
+        nuke.message("Please drag a rectangular area with Ctrl+Shift in the viewer first.")
+        return
+
+    # 3. CONVERT NDC back to actual Image Pixels to match the visual area
+    aspect = w / h
+    x_pixel = (x_ndc * 0.5 + 0.5) * w
+    r_pixel = (r_ndc * 0.5 + 0.5) * w
+    
+    # Y-axis scaling requires the aspect ratio to maintain square pixels mapping
+    y_pixel = ((y_ndc * 0.5 * aspect) + 0.5) * h
+    t_pixel = ((t_ndc * 0.5 * aspect) + 0.5) * h
+    
+    # 4. Sort to ensure Left/Right/Top/Bottom are correct regardless of mouse drag direction
+    crop_x = int(min(x_pixel, r_pixel))
+    crop_y = int(min(y_pixel, t_pixel))
+    crop_r = int(max(x_pixel, r_pixel))
+    crop_t = int(max(y_pixel, t_pixel))
+    
+    # 5. Clear selections to isolate the new node
+    for n in nuke.selectedNodes():
+        n.setSelected(False)
+        
+    # 6. Spawn the disconnected Crop node
+    crop = nuke.nodes.Crop()
+    crop.setInput(0, None)
+    
+    # Apply the calculated image pixels
+    crop['box'].setValue(crop_x, 0)
+    crop['box'].setValue(crop_y, 1)
+    crop['box'].setValue(crop_r, 2)
+    crop['box'].setValue(crop_t, 3)
+    
+    crop.setSelected(True)
+
+# Execute
+crop_from_sample_area()

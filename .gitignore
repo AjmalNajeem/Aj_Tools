@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*_backup.py
+*.bak
+releases/
+.env*
+website/.openai/
+website/.git/
